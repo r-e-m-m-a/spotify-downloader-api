@@ -94,66 +94,66 @@ app.get('/download', async (req, res) => {
 });
 
 
-app.get('/stream', async (req, res) => {
-    // const videoUrl = req.body.video_url;
-    const videoUrl = req.query.videoUrl;
+// app.get('/stream', async (req, res) => {
+//     // const videoUrl = req.body.video_url;
+//     const videoUrl = req.query.videoUrl;
 
-    if (!videoUrl) {
-        return res.status(400).json({ error: 'Missing video_url parameter' });
-    }
+//     if (!videoUrl) {
+//         return res.status(400).json({ error: 'Missing video_url parameter' });
+//     }
 
-    try {
-        const info = await ytdl.getInfo(videoUrl);
-        const title = info.videoDetails.title;
-        const mp3Path = path.resolve(__dirname, 'src', `${title}.mp3`);
+//     try {
+//         const info = await ytdl.getInfo(videoUrl);
+//         const title = info.videoDetails.title;
+//         const mp3Path = path.resolve(__dirname, 'src', `${title}.mp3`);
 
-        const audioStream = ytdl(videoUrl, { filter: 'audioonly' });
+//         const audioStream = ytdl(videoUrl, { filter: 'audioonly' });
 
-        let starttime;
-        audioStream.on('progress', (chunkLength, downloaded, total) => {
-            if (!starttime) {
-                starttime = Date.now();
-            }
-            const elapsed = (Date.now() - starttime) / 1000;
-            const speed = downloaded / elapsed;
-            const eta = (total - downloaded) / speed;
-            console.log(`Progress: ${(downloaded / total * 100).toFixed(2)}%`);
-            console.log(`Downloaded: ${(downloaded / (1024 * 1024)).toFixed(2)} MB`);
-            console.log(`Speed: ${(speed / 1024).toFixed(2)} KB/s`);
-            console.log(`ETA: ${eta.toFixed(2)} seconds`);
-        });
+//         let starttime;
+//         audioStream.on('progress', (chunkLength, downloaded, total) => {
+//             if (!starttime) {
+//                 starttime = Date.now();
+//             }
+//             const elapsed = (Date.now() - starttime) / 1000;
+//             const speed = downloaded / elapsed;
+//             const eta = (total - downloaded) / speed;
+//             console.log(`Progress: ${(downloaded / total * 100).toFixed(2)}%`);
+//             console.log(`Downloaded: ${(downloaded / (1024 * 1024)).toFixed(2)} MB`);
+//             console.log(`Speed: ${(speed / 1024).toFixed(2)} KB/s`);
+//             console.log(`ETA: ${eta.toFixed(2)} seconds`);
+//         });
 
-        ffmpeg(audioStream)
-            .audioCodec('libmp3lame')
-            .audioBitrate(128)
-            .save(mp3Path)
-            .on('end', () => {
-                console.log('Download and conversion complete');
-                return res.json({ stream_url: `${req.protocol}://${req.get('host')}/play/${path.basename(mp3Path)}` });
-            })
-            .on('error', (err) => {
-                console.error(err);
-                return res.status(500).json({ error: 'Failed to download or convert' });
-            });
-    } catch (err) {
-        console.error(err);
-        return res.status(500).json({ error: 'Failed to download' });
-    }
-});
+//         ffmpeg(audioStream)
+//             .audioCodec('libmp3lame')
+//             .audioBitrate(128)
+//             .save(mp3Path)
+//             .on('end', () => {
+//                 console.log('Download and conversion complete');
+//                 return res.json({ stream_url: `${req.protocol}://${req.get('host')}/play/${path.basename(mp3Path)}` });
+//             })
+//             .on('error', (err) => {
+//                 console.error(err);
+//                 return res.status(500).json({ error: 'Failed to download or convert' });
+//             });
+//     } catch (err) {
+//         console.error(err);
+//         return res.status(500).json({ error: 'Failed to download' });
+//     }
+// });
 
-app.get('/play/:filename', (req, res) => {
-    const filename = req.params.filename;
-    const filepath = path.resolve(__dirname, 'src', filename);
-    res.sendFile(filepath);
-});
+// app.get('/play/:filename', (req, res) => {
+//     const filename = req.params.filename;
+//     const filepath = path.resolve(__dirname, 'src', filename);
+//     res.sendFile(filepath);
+// });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    if (!fs.existsSync('src')) {
-        fs.mkdirSync('src');
-    }
-    console.log(`Server is running on port ${PORT}`);
-});
+// const PORT = process.env.PORT || 3000;
+// app.listen(PORT, () => {
+//     if (!fs.existsSync('src')) {
+//         fs.mkdirSync('src');
+//     }
+//     console.log(`Server is running on port ${PORT}`);
+// });
 
 
 
