@@ -1,61 +1,222 @@
-const express = require("express");
+// const express = require('express');
+// const ytdl = require('ytdl-core');
+// const ffmpeg = require('fluent-ffmpeg');
+// const path = require('path');
+// const fs = require('fs');
+
+// const app = express();
+// app.use(express.json());
+
+// app.post('/download', async (req, res) => {
+//     const videoUrl = req.body.video_url;
+
+//     if (!videoUrl) {
+//         return res.status(400).json({ error: 'Missing video_url parameter' });
+//     }
+
+//     try {
+//         const info = await ytdl.getInfo(videoUrl);
+//         const title = info.videoDetails.title;
+//         const mp3Path = path.resolve(__dirname, 'src', `${title}.mp3`);
+
+//         const audioStream = ytdl(videoUrl, { filter: 'audioonly' });
+//         ffmpeg(audioStream)
+//             .audioCodec('libmp3lame')
+//             .audioBitrate(192)
+//             .save(mp3Path)
+//             .on('end', () => {
+//                 return res.json({ stream_url: `/stream/${path.basename(mp3Path)}` });
+//             })
+//             .on('error', (err) => {
+//                 console.error(err);
+//                 return res.status(500).json({ error: 'Failed to download or convert' });
+//             });
+//     } catch (err) {
+//         console.error(err);
+//         return res.status(500).json({ error: 'Failed to download' });
+//     }
+// });
+
+// app.get('/stream/:filename', (req, res) => {
+//     const filename = req.params.filename;
+//     const filepath = path.resolve(__dirname, 'src', filename);
+//     res.sendFile(filepath);
+// });
+
+// const PORT = process.env.PORT || 3000;
+// app.listen(PORT, () => {
+//     if (!fs.existsSync('src')) {
+//         fs.mkdirSync('src');
+//     }
+//     console.log(`Server is running on port ${PORT}`);
+// });
+
+
+const express = require('express');
+const ytdl = require('ytdl-core');
+const ytsr = require('ytsr');
+const ffmpeg = require('fluent-ffmpeg');
+const path = require('path');
+const fs = require('fs');
+const cors = require('cors');
+
 const app = express();
-const port = process.env.PORT || 3001;
+app.use(express.json());
+app.use(cors()); // Enable CORS for all routes
 
-app.get("/", (req, res) => res.type('html').send(html));
 
-const server = app.listen(port, () => console.log(`Example app listening on port ${port}!`));
+app.get('/download', async (req, res) => {
+    const search = req.query.search;
+    if (!search) {
+        return res.status(400).json({ error: 'Missing search query' });
+    }
 
-server.keepAliveTimeout = 120 * 1000;
-server.headersTimeout = 120 * 1000;
+    try {
+        const searchResults = await ytsr(search, { limit: 2 });
+        if (!searchResults || !searchResults.items || searchResults.items.length === 0) {
+            return res.status(404).json({ error: 'No videos found' });
+        }
 
-const html = `
-<!DOCTYPE html>
-<html>
-  <head>
-    <title>Hello from Render!</title>
-    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
-    <script>
-      setTimeout(() => {
-        confetti({
-          particleCount: 100,
-          spread: 70,
-          origin: { y: 0.6 },
-          disableForReducedMotion: true
+        const firstVideo = searchResults.items[0];
+        const secondVideo = searchResults.items[1];
+        if (firstVideo.type !== 'video' || secondVideo.type !== 'video') {
+            return res.status(404).json({ error: 'No videos found' });
+        }
+
+        const videoUrl = firstVideo.url || secondVideo.url;
+        const streamUrl = `${req.protocol}://${req.get('host')}/stream?videoUrl=${videoUrl}`;
+
+        res.json({ stream: streamUrl });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+
+app.get('/stream', async (req, res) => {
+    // const videoUrl = req.body.video_url;
+    const videoUrl = req.query.videoUrl;
+
+    if (!videoUrl) {
+        return res.status(400).json({ error: 'Missing video_url parameter' });
+    }
+
+    try {
+        const info = await ytdl.getInfo(videoUrl);
+        const title = info.videoDetails.title;
+        const mp3Path = path.resolve(__dirname, 'src', `${title}.mp3`);
+
+        const audioStream = ytdl(videoUrl, { filter: 'audioonly' });
+
+        let starttime;
+        audioStream.on('progress', (chunkLength, downloaded, total) => {
+            if (!starttime) {
+                starttime = Date.now();
+            }
+            const elapsed = (Date.now() - starttime) / 1000;
+            const speed = downloaded / elapsed;
+            const eta = (total - downloaded) / speed;
+            console.log(`Progress: ${(downloaded / total * 100).toFixed(2)}%`);
+            console.log(`Downloaded: ${(downloaded / (1024 * 1024)).toFixed(2)} MB`);
+            console.log(`Speed: ${(speed / 1024).toFixed(2)} KB/s`);
+            console.log(`ETA: ${eta.toFixed(2)} seconds`);
         });
-      }, 500);
-    </script>
-    <style>
-      @import url("https://p.typekit.net/p.css?s=1&k=vnd5zic&ht=tk&f=39475.39476.39477.39478.39479.39480.39481.39482&a=18673890&app=typekit&e=css");
-      @font-face {
-        font-family: "neo-sans";
-        src: url("https://use.typekit.net/af/00ac0a/00000000000000003b9b2033/27/l?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=n7&v=3") format("woff2"), url("https://use.typekit.net/af/00ac0a/00000000000000003b9b2033/27/d?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=n7&v=3") format("woff"), url("https://use.typekit.net/af/00ac0a/00000000000000003b9b2033/27/a?primer=7cdcb44be4a7db8877ffa5c0007b8dd865b3bbc383831fe2ea177f62257a9191&fvd=n7&v=3") format("opentype");
-        font-style: normal;
-        font-weight: 700;
-      }
-      html {
-        font-family: neo-sans;
-        font-weight: 700;
-        font-size: calc(62rem / 16);
-      }
-      body {
-        background: white;
-      }
-      section {
-        border-radius: 1em;
-        padding: 1em;
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        margin-right: -50%;
-        transform: translate(-50%, -50%);
-      }
-    </style>
-  </head>
-  <body>
-    <section>
-      Hello from Render!
-    </section>
-  </body>
-</html>
-`
+
+        ffmpeg(audioStream)
+            .audioCodec('libmp3lame')
+            .audioBitrate(128)
+            .save(mp3Path)
+            .on('end', () => {
+                console.log('Download and conversion complete');
+                return res.json({ stream_url: `${req.protocol}://${req.get('host')}/play/${path.basename(mp3Path)}` });
+            })
+            .on('error', (err) => {
+                console.error(err);
+                return res.status(500).json({ error: 'Failed to download or convert' });
+            });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: 'Failed to download' });
+    }
+});
+
+app.get('/play/:filename', (req, res) => {
+    const filename = req.params.filename;
+    const filepath = path.resolve(__dirname, 'src', filename);
+    res.sendFile(filepath);
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    if (!fs.existsSync('src')) {
+        fs.mkdirSync('src');
+    }
+    console.log(`Server is running on port ${PORT}`);
+});
+
+
+
+// app.get('/stream', async (req, res) => {
+//     const videoUrl = req.query.videoUrl;
+
+//     if (!videoUrl) {
+//         return res.status(400).json({ error: 'Missing video_url parameter' });
+//     }
+
+//     try {
+//         const info = await ytdl.getInfo(videoUrl);
+//         const title = info.videoDetails.title;
+
+//         const audioStream = ytdl(videoUrl, { filter: 'audioonly' });
+
+//         res.setHeader('Content-Disposition', `attachment; filename="${title}.mp3"`);
+//         res.setHeader('Content-Type', 'audio/mpeg');
+
+//         let starttime;
+//         audioStream.on('progress', (chunkLength, downloaded, total) => {
+//             if (!starttime) {
+//                 starttime = Date.now();
+//             }
+//             const elapsed = (Date.now() - starttime) / 1000;
+//             const speed = downloaded / elapsed;
+//             const eta = (total - downloaded) / speed;
+//             console.log(`Progress: ${(downloaded / total * 100).toFixed(2)}%`);
+//             console.log(`Downloaded: ${(downloaded / (1024 * 1024)).toFixed(2)} MB`);
+//             console.log(`Speed: ${(speed / 1024).toFixed(2)} KB/s`);
+//             console.log(`ETA: ${eta.toFixed(2)} seconds`);
+//         });
+
+//         ffmpeg(audioStream)
+//             .audioCodec('libmp3lame')
+//             .audioBitrate(128)
+//             .format('mp3')
+//             .pipe(res, { end: true })
+//             .on('end', () => {
+//                 console.log('Download and conversion complete');
+//             })
+//             .on('error', (err) => {
+//                 console.error(err);
+//                 res.status(500).json({ error: 'Failed to download or convert' });
+//             });
+
+//     } catch (err) {
+//         console.error(err);
+//         return res.status(500).json({ error: 'Failed to download' });
+//     }
+// });
+
+
+// app.get('/play/:filename', (req, res) => {
+//     const filename = req.params.filename;
+//     const filepath = path.resolve(__dirname, 'src', filename);
+//     res.sendFile(filepath);
+// });
+
+// const PORT = process.env.PORT || 3000;
+// app.listen(PORT, () => {
+//     if (!fs.existsSync('src')) {
+//         fs.mkdirSync('src');
+//     }
+//     console.log(`Server is running on port ${PORT}`);
+// });
