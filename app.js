@@ -1,57 +1,3 @@
-// const express = require('express');
-// const ytdl = require('ytdl-core');
-// const ffmpeg = require('fluent-ffmpeg');
-// const path = require('path');
-// const fs = require('fs');
-
-// const app = express();
-// app.use(express.json());
-
-// app.post('/download', async (req, res) => {
-//     const videoUrl = req.body.video_url;
-
-//     if (!videoUrl) {
-//         return res.status(400).json({ error: 'Missing video_url parameter' });
-//     }
-
-//     try {
-//         const info = await ytdl.getInfo(videoUrl);
-//         const title = info.videoDetails.title;
-//         const mp3Path = path.resolve(__dirname, 'src', `${title}.mp3`);
-
-//         const audioStream = ytdl(videoUrl, { filter: 'audioonly' });
-//         ffmpeg(audioStream)
-//             .audioCodec('libmp3lame')
-//             .audioBitrate(192)
-//             .save(mp3Path)
-//             .on('end', () => {
-//                 return res.json({ stream_url: `/stream/${path.basename(mp3Path)}` });
-//             })
-//             .on('error', (err) => {
-//                 console.error(err);
-//                 return res.status(500).json({ error: 'Failed to download or convert' });
-//             });
-//     } catch (err) {
-//         console.error(err);
-//         return res.status(500).json({ error: 'Failed to download' });
-//     }
-// });
-
-// app.get('/stream/:filename', (req, res) => {
-//     const filename = req.params.filename;
-//     const filepath = path.resolve(__dirname, 'src', filename);
-//     res.sendFile(filepath);
-// });
-
-// const PORT = process.env.PORT || 3000;
-// app.listen(PORT, () => {
-//     if (!fs.existsSync('src')) {
-//         fs.mkdirSync('src');
-//     }
-//     console.log(`Server is running on port ${PORT}`);
-// });
-
-
 const express = require('express');
 const ytdl = require('ytdl-core');
 const ytsr = require('ytsr');
@@ -94,84 +40,21 @@ app.get('/download', async (req, res) => {
 });
 
 
-// app.get('/stream', async (req, res) => {
-//     // const videoUrl = req.body.video_url;
-//     const videoUrl = req.query.videoUrl;
-
-//     if (!videoUrl) {
-//         return res.status(400).json({ error: 'Missing video_url parameter' });
-//     }
-
-//     try {
-//         const info = await ytdl.getInfo(videoUrl);
-//         const title = info.videoDetails.title;
-//         const mp3Path = path.resolve(__dirname, 'src', `${title}.mp3`);
-
-//         const audioStream = ytdl(videoUrl, { filter: 'audioonly' });
-
-//         let starttime;
-//         audioStream.on('progress', (chunkLength, downloaded, total) => {
-//             if (!starttime) {
-//                 starttime = Date.now();
-//             }
-//             const elapsed = (Date.now() - starttime) / 1000;
-//             const speed = downloaded / elapsed;
-//             const eta = (total - downloaded) / speed;
-//             console.log(`Progress: ${(downloaded / total * 100).toFixed(2)}%`);
-//             console.log(`Downloaded: ${(downloaded / (1024 * 1024)).toFixed(2)} MB`);
-//             console.log(`Speed: ${(speed / 1024).toFixed(2)} KB/s`);
-//             console.log(`ETA: ${eta.toFixed(2)} seconds`);
-//         });
-
-//         ffmpeg(audioStream)
-//             .audioCodec('libmp3lame')
-//             .audioBitrate(128)
-//             .save(mp3Path)
-//             .on('end', () => {
-//                 console.log('Download and conversion complete');
-//                 return res.json({ stream_url: `${req.protocol}://${req.get('host')}/play/${path.basename(mp3Path)}` });
-//             })
-//             .on('error', (err) => {
-//                 console.error(err);
-//                 return res.status(500).json({ error: 'Failed to download or convert' });
-//             });
-//     } catch (err) {
-//         console.error(err);
-//         return res.status(500).json({ error: 'Failed to download' });
-//     }
-// });
-
-// app.get('/play/:filename', (req, res) => {
-//     const filename = req.params.filename;
-//     const filepath = path.resolve(__dirname, 'src', filename);
-//     res.sendFile(filepath);
-// });
-
-// const PORT = process.env.PORT || 3000;
-// app.listen(PORT, () => {
-//     if (!fs.existsSync('src')) {
-//         fs.mkdirSync('src');
-//     }
-//     console.log(`Server is running on port ${PORT}`);
-// });
-
-
+const fileAccessTimes = {};
 
 app.get('/stream', async (req, res) => {
     const videoUrl = req.query.videoUrl;
 
     if (!videoUrl) {
-        return res.status(400).json({ error: 'Missing video_url parameter' });
+        return res.status(400).json({ error: 'Missing videoUrl parameter' });
     }
 
     try {
         const info = await ytdl.getInfo(videoUrl);
         const title = info.videoDetails.title;
+        const mp3Path = path.resolve(__dirname, 'downloads', `${title}.mp3`);
 
         const audioStream = ytdl(videoUrl, { filter: 'audioonly' });
-
-        res.setHeader('Content-Disposition', `attachment; filename="${title}.mp3"`);
-        res.setHeader('Content-Type', 'audio/mpeg');
 
         let starttime;
         audioStream.on('progress', (chunkLength, downloaded, total) => {
@@ -190,33 +73,58 @@ app.get('/stream', async (req, res) => {
         ffmpeg(audioStream)
             .audioCodec('libmp3lame')
             .audioBitrate(128)
-            .format('mp3')
-            .pipe(res, { end: true })
+            .save(mp3Path)
             .on('end', () => {
                 console.log('Download and conversion complete');
+                const streamUrl = `${req.protocol}://${req.get('host')}/play/${path.basename(mp3Path)}`;
+                fileAccessTimes[mp3Path] = Date.now(); // Track access time
+                return res.json({ stream_url: streamUrl });
             })
             .on('error', (err) => {
                 console.error(err);
-                res.status(500).json({ error: 'Failed to download or convert' });
+                return res.status(500).json({ error: 'Failed to download or convert' });
             });
-
     } catch (err) {
         console.error(err);
         return res.status(500).json({ error: 'Failed to download' });
     }
 });
 
-
 app.get('/play/:filename', (req, res) => {
     const filename = req.params.filename;
-    const filepath = path.resolve(__dirname, 'src', filename);
-    res.sendFile(filepath);
+    const filepath = path.resolve(__dirname, 'downloads', filename);
+
+    // Check if file exists and send it
+    if (fs.existsSync(filepath)) {
+        res.sendFile(filepath);
+        
+        // Schedule deletion after 10 minutes (600000 milliseconds)
+        setTimeout(() => {
+            if (fileAccessTimes[filepath]) {
+                const lastAccessTime = fileAccessTimes[filepath];
+                const currentTime = Date.now();
+                const elapsedTime = currentTime - lastAccessTime;
+                if (elapsedTime >= 600000) { // 10 minutes
+                    fs.unlink(filepath, (err) => {
+                        if (err) {
+                            console.error(`Error deleting file ${filename}:`, err);
+                        } else {
+                            console.log(`Deleted file ${filename} after 10 minutes.`);
+                            delete fileAccessTimes[filepath];
+                        }
+                    });
+                }
+            }
+        }, 600000);
+    } else {
+        return res.status(404).json({ error: 'File not found' });
+    }
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    if (!fs.existsSync('src')) {
-        fs.mkdirSync('src');
+    if (!fs.existsSync('downloads')) {
+        fs.mkdirSync('downloads');
     }
     console.log(`Server is running on port ${PORT}`);
 });
