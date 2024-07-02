@@ -42,6 +42,54 @@ app.get('/download', async (req, res) => {
 
 const fileAccessTimes = {};
 
+// app.get('/stream', async (req, res) => {
+//     const videoUrl = req.query.videoUrl;
+
+//     if (!videoUrl) {
+//         return res.status(400).json({ error: 'Missing videoUrl parameter' });
+//     }
+
+//     try {
+//         const info = await ytdl.getInfo(videoUrl);
+//         const title = info.videoDetails.title;
+//         const mp3Path = path.resolve(__dirname, 'downloads', `${title}.mp3`);
+
+//         const audioStream = ytdl(videoUrl, { filter: 'audioonly' });
+
+//         let starttime;
+//         audioStream.on('progress', (chunkLength, downloaded, total) => {
+//             if (!starttime) {
+//                 starttime = Date.now();
+//             }
+//             const elapsed = (Date.now() - starttime) / 1000;
+//             const speed = downloaded / elapsed;
+//             const eta = (total - downloaded) / speed;
+//             console.log(`Progress: ${(downloaded / total * 100).toFixed(2)}%`);
+//             console.log(`Downloaded: ${(downloaded / (1024 * 1024)).toFixed(2)} MB`);
+//             console.log(`Speed: ${(speed / 1024).toFixed(2)} KB/s`);
+//             console.log(`ETA: ${eta.toFixed(2)} seconds`);
+//         });
+
+//         ffmpeg(audioStream)
+//             .audioCodec('libmp3lame')
+//             .audioBitrate(128)
+//             .save(mp3Path)
+//             .on('end', () => {
+//                 console.log('Download and conversion complete');
+//                 const streamUrl = `${req.protocol}://${req.get('host')}/play/${path.basename(mp3Path)}`;
+//                 fileAccessTimes[mp3Path] = Date.now(); // Track access time
+//                 return res.json({ stream_url: streamUrl });
+//             })
+//             .on('error', (err) => {
+//                 console.error(err);
+//                 return res.status(500).json({ error: 'Failed to download or convert' });
+//             });
+//     } catch (err) {
+//         console.error(err);
+//         return res.status(500).json({ error: 'Failed to download' });
+//     }
+// });
+
 app.get('/stream', async (req, res) => {
     const videoUrl = req.query.videoUrl;
 
@@ -70,7 +118,7 @@ app.get('/stream', async (req, res) => {
             console.log(`ETA: ${eta.toFixed(2)} seconds`);
         });
 
-        ffmpeg(audioStream)
+        const ffmpegProcess = ffmpeg(audioStream)
             .audioCodec('libmp3lame')
             .audioBitrate(128)
             .save(mp3Path)
@@ -84,6 +132,23 @@ app.get('/stream', async (req, res) => {
                 console.error(err);
                 return res.status(500).json({ error: 'Failed to download or convert' });
             });
+
+        res.on('close', () => {
+            console.log('Client disconnected');
+            ffmpegProcess.kill('SIGKILL'); // Kill the ffmpeg process
+            audioStream.destroy(); // Destroy the audio stream
+
+            if (fs.existsSync(mp3Path)) {
+                fs.unlink(mp3Path, (err) => {
+                    if (err) {
+                        console.error(`Error deleting file: ${err}`);
+                    } else {
+                        console.log(`Deleted file: ${mp3Path}`);
+                    }
+                });
+            }
+        });
+
     } catch (err) {
         console.error(err);
         return res.status(500).json({ error: 'Failed to download' });
